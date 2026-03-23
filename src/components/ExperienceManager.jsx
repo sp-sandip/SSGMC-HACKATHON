@@ -33,7 +33,7 @@ export default function ExperienceManager({ product, onClose }) {
           <div className="flex bg-[#07070d] rounded-xl p-1.5 border border-white/5 shadow-inner relative z-50 cursor-pointer pointer-events-auto">
             {[
               { id: 'AR', icon: Camera, label: 'AR Try-On' },
-              { id: 'LIVE', icon: Video, label: 'Consult Stylist' }
+              { id: 'LIVE', icon: Video, label: 'Call Expert' }
             ].map((mode, i) => (
               <button key={mode.id} onClick={() => setActiveMode(mode.id)}
                 className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold tracking-wider uppercase transition-all duration-300 ${

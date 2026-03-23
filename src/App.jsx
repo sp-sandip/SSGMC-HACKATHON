@@ -9,6 +9,7 @@ import {
   ChevronLeft, LayoutGrid, List, Flame, ArrowRight, Video, Camera
 } from 'lucide-react';
 import ExperienceManager from './components/ExperienceManager';
+import LiveSession from './components/LiveSession';
 
 const API = 'http://localhost:5000/api';
 
@@ -221,10 +222,10 @@ function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish, onSt
 
         {/* LEFT: media */}
         <div style={{ flex:'0 0 50%', background:'#090912', display:'flex', flexDirection:'column', minHeight:0 }}>
-          <div style={{ flex:1, padding:16, minHeight:400 }}>
-              <div style={{ width:'100%', height:'100%', minHeight:400, borderRadius:16, overflow:'hidden', background:'transparent', padding: '16px' }}>
+          <div style={{ flex:1, padding:16, minHeight:450, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <div style={{ width:'100%', height:'100%', minHeight:450, borderRadius:16, overflow:'hidden', background:'transparent', padding: '16px' }}>
                 <img src={product.thumbnailUrl || getCover(product.category)} alt={product.name}
-                  style={{ width:'100%', height:'100%', objectFit:'contain', maxHeight:450, mixBlendMode: 'screen', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1)) contrast(1.1)' }}
+                  style={{ width:'100%', height:'100%', objectFit:'contain', maxHeight:'100%', filter: 'drop-shadow(0 0 10px rgba(0,0,0,0.5))' }}
                   onError={e => e.target.src = COVERS.men_casual}/>
               </div>
           </div>
@@ -349,6 +350,7 @@ export default function App() {
   const [compareList,setCompareList]= useState([]);
   const [trending,   setTrending]   = useState([]);
   const [experienceItem, setExperienceItem] = useState(null);
+  const [activeCall, setActiveCall] = useState(false);
   const PER_PAGE = 12;
 
   // Scroll to top button
@@ -536,11 +538,11 @@ export default function App() {
         </p>
 
         <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap', marginBottom:16, animation:'fadeUp 0.8s ease' }}>
-          <button onClick={()=>document.getElementById('shop-section').scrollIntoView({behavior:'smooth'})} className="btn-gold" style={{ padding:'14px 32px', borderRadius:14, fontSize:14, display:'flex', alignItems:'center', gap:8, boxShadow:'0 8px 30px rgba(201,168,76,0.25)' }}>
-            <ShoppingBag size={16}/> Shop Now
+          <button onClick={()=>document.getElementById('shop-section')?.scrollIntoView({behavior:'smooth'})} className="btn-gold" style={{ padding:'14px 32px', borderRadius:14, fontSize:14, display:'flex', alignItems:'center', gap:8, boxShadow:'0 8px 30px rgba(201,168,76,0.25)' }}>
+            <ShoppingBag size={16}/> Explore Collection
           </button>
-          <button onClick={()=>setFilter('All')} className="btn-ghost" style={{ padding:'14px 32px', borderRadius:14, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
-            <Camera size={16}/> Virtual Try-On
+          <button onClick={()=>setActiveCall(true)} className="btn-ghost" style={{ padding:'14px 32px', borderRadius:14, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
+            <Video size={16}/> Call Expert
           </button>
         </div>
 
@@ -736,7 +738,7 @@ export default function App() {
                     {/* Card image/3D */}
                     <div onClick={()=>setSelected(p)} onMouseEnter={()=>setHoveredCard(p._id)} onMouseLeave={()=>setHoveredCard(null)} style={{ position:'relative', aspectRatio:'3/4', background:'transparent', overflow:'hidden', border:'none', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <img src={cover} alt={p.name} className="card-img" loading="lazy"
-                        style={{ width:'100%', height:'100%', objectFit:'contain', transition:'all 0.3s ease', opacity: 1, background:'transparent', border:'none', outline:'none', mixBlendMode: 'screen', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1)) contrast(1.1)' }} onError={e=>e.target.src=COVERS.men_casual}/>
+                        style={{ width:'100%', height:'100%', objectFit:'contain', transition:'all 0.3s ease', opacity: 1, background:'transparent', border:'none', outline:'none' }} onError={e=>e.target.src=COVERS.men_casual}/>
                       
                       {/* Strictly NO black overlay filters as requested by Master Prompt */}
                       <div style={{ position:'absolute', inset:0, zIndex:20, pointerEvents:'none', background:'linear-gradient(to top,rgba(18,18,18,0.95) 0%,rgba(18,18,18,0) 40%)' }}/>
@@ -919,7 +921,7 @@ export default function App() {
           onAddToCart={p=>{addToCart(p);}}
           wishlist={wishlist}
           onToggleWish={toggleWish}
-          onStartLive={(p)=>setLiveSession(p)}
+          onStartLive={(p)=>{ setSelected(null); setExperienceItem(p); }}
         />
       )}
 
@@ -936,6 +938,11 @@ export default function App() {
       {/* ══ EXPERIENCE MANAGER MODAL ══ */}
       {experienceItem && (
         <ExperienceManager product={experienceItem} onClose={() => setExperienceItem(null)} />
+      )}
+
+      {/* ══ LIVE EXPERT CALL MODAL ══ */}
+      {activeCall && (
+        <LiveSession product={{ name: "General Consultation" }} onClose={() => setActiveCall(false)} />
       )}
 
       {/* ══ FOOTER ══ */}
@@ -977,7 +984,6 @@ export default function App() {
               {['Privacy','Terms','Cookies'].map(l => (
                 <a key={l} href="#" style={{ fontSize:12, color:'#1a1a2e', textDecoration:'none' }}>{l}</a>
               ))}
-              <a href="admin.html" style={{ fontSize:12, color:'#2a2a3a', textDecoration:'none' }}>Admin Panel →</a>
             </div>
           </div>
         </div>

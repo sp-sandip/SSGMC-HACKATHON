@@ -14,26 +14,15 @@ export default function LiveSession({ product, onClose }) {
   
   const remoteRef = useRef(null);
   const rtcRef = useRef({ client: null });
-  const channelName = 'test_room';
+  const channelName = 'expert_consultation';
 
-  // 1. Socket Signaling Trigger
+  // 1. Direct Agora Call setup
   useEffect(() => {
     let unmounted = false;
-    const socketUrl = window.location.origin.includes('517') 
-        ? window.location.origin.replace(/517[0-9]/, '5000') 
-        : 'http://localhost:5000';
-    const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
-    
-    // Ringing state logic
-    socket.emit('client-call', {
-      channelName: 'test_room',
-      productName: product.name,
-      productId: product._id
-    });
 
     const APP_ID = '6d205627ba6f446fb4ae1c8f44d7a95a';
-    const TOKEN = '007eJxTYNgwV1QidEKITkDOcbtt3p5TvrHvi9V7cV7PwCxbTXhm2nEFBrMUIwNTMyPzpESzNBMTs7Qkk8RUw2QLIDvFPNHSNHFj2IHMhkBGhrDA50yMDBAI4nMxlKQWl8QX5efn6jEwAABnmiAq';
-    const CHANNEL = 'test_room';
+    const TOKEN = '007eJxTYMgXKJV8PrflV+y5Lv/4VQyGGxZazV92xrXJQvlozbOXNvMUGMxSjAxMzYzMkxLN0kxMzNKSTBJTDZMtgOwU80RL08S16w9mNgQyMqjxzWRmZIBAEF+YIbWiILWoJD45P6+4NKcksSQzP4+BAQCEyCZV';
+    const CHANNEL = 'expert_consultation';
 
     const initAgora = async () => {
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -88,21 +77,11 @@ export default function LiveSession({ product, onClose }) {
       }
     };
 
-    socket.on('call-accepted', () => {
-      if (!unmounted) {
-         setCallStatus('connected');
-         initAgora();
-      }
-    });
-    
-    socket.on('call-ended', () => {
-       if (!unmounted) onClose();
-    });
+    // Execute Direct Call flow immediately on mount
+    initAgora();
 
     return () => {
       unmounted = true;
-      socket.emit('call-ended', { channelName });
-      socket.disconnect();
       if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
       if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
       rtcRef.current.client?.leave();
