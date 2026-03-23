@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Auth from './components/Auth';
 import {
   ShoppingBag, X, Star, Heart, Search, Box, ChevronRight,
   Award, Zap, TrendingUp, MessageCircle, Filter, ArrowUp,
   Package, Truck, Shield, RefreshCw, ChevronDown, SlidersHorizontal,
   Eye, Share2, Copy, Check, Sparkles, Tag, Clock, Info,
-  ChevronLeft, LayoutGrid, List, Flame, ArrowRight
+  ChevronLeft, LayoutGrid, List, Flame, ArrowRight, Video, Camera
 } from 'lucide-react';
+import ExperienceManager from './components/ExperienceManager';
 
 const API = 'http://localhost:5000/api';
 
@@ -197,8 +200,7 @@ function ReviewForm({ products, onClose }) {
 }
 
 /* ─── Quick View Modal ─── */
-function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish }) {
-  const [show3D, setShow3D] = useState(false);
+function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish, onStartLive }) {
   const [size, setSize]     = useState('M');
   const [added, setAdded]   = useState(false);
 
@@ -219,27 +221,12 @@ function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish }) {
 
         {/* LEFT: media */}
         <div style={{ flex:'0 0 50%', background:'#090912', display:'flex', flexDirection:'column', minHeight:0 }}>
-          <div style={{ display:'flex', padding:'16px 16px 0', gap:8 }}>
-            {[false, true].map(is3D => (
-              <button key={String(is3D)} onClick={()=>setShow3D(is3D)} style={{
-                flex:1, padding:'9px 0', borderRadius:10, fontSize:11, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', border:'none', transition:'all 0.18s',
-                background: show3D===is3D ? 'linear-gradient(135deg,#C9A84C,#F0D080)' : 'rgba(255,255,255,0.05)',
-                color: show3D===is3D ? '#07070d' : '#444',
-              }}>{is3D ? '🎲 3D / AR' : '📸 Photo'}</button>
-            ))}
-          </div>
           <div style={{ flex:1, padding:16, minHeight:400 }}>
-            {!show3D ? (
-              <div style={{ width:'100%', height:'100%', minHeight:400, borderRadius:16, overflow:'hidden', background:'#141422' }}>
+              <div style={{ width:'100%', height:'100%', minHeight:400, borderRadius:16, overflow:'hidden', background:'transparent', padding: '16px' }}>
                 <img src={product.thumbnailUrl || getCover(product.category)} alt={product.name}
-                  style={{ width:'100%', height:'100%', objectFit:'contain', maxHeight:450 }}
+                  style={{ width:'100%', height:'100%', objectFit:'contain', maxHeight:450, mixBlendMode: 'screen', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1)) contrast(1.1)' }}
                   onError={e => e.target.src = COVERS.men_casual}/>
               </div>
-            ) : (
-              <div style={{ width:'100%', height:450, borderRadius:16, overflow:'hidden' }}>
-                <ModelViewer glb={product.modelUrl} name={product.name}/>
-              </div>
-            )}
           </div>
         </div>
 
@@ -265,7 +252,7 @@ function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish }) {
           </div>
 
           <p style={{ color:'#4a4a6a', fontSize:14, lineHeight:1.8, marginBottom:20 }}>
-            {product.description || `Premium ${product.name} crafted with exceptional quality. Explore it in 3D for a true-to-life preview before purchasing.`}
+            {product.description || `Premium ${product.name} crafted with exceptional quality. Try it precisely with our AR Try-On before purchasing.`}
           </p>
 
           {/* Price */}
@@ -311,10 +298,10 @@ function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish }) {
               {product.stock === 0 ? 'Out of Stock' : added ? '✓ Added to Bag!' : `Add to Bag — Size ${size}`}
             </button>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <button onClick={()=>setShow3D(true)} className="btn-ghost" style={{ padding:'12px 0', borderRadius:12, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                <Box size={14}/> View in 3D
+              <button onClick={()=>onStartLive(product)} className="btn-ghost" style={{ padding:'12px 0', borderRadius:12, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6, borderColor:'#C9A84C', color:'#C9A84C', gridColumn:'span 2' }}>
+                <Video size={14}/> Virtual AR Try-On
               </button>
-              <button onClick={()=>onToggleWish(product._id)} className="btn-ghost" style={{ padding:'12px 0', borderRadius:12, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6, color: wishlist.includes(product._id) ? '#f87171' : undefined }}>
+              <button onClick={()=>onToggleWish(product._id)} className="btn-ghost" style={{ gridColumn:'span 2', padding:'12px 0', borderRadius:12, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6, color: wishlist.includes(product._id) ? '#f87171' : undefined }}>
                 <Heart size={14} fill={wishlist.includes(product._id)?'#f87171':'none'} color={wishlist.includes(product._id)?'#f87171':'currentColor'}/>
                 {wishlist.includes(product._id) ? 'Wishlisted' : 'Wishlist'}
               </button>
@@ -339,12 +326,15 @@ function QuickView({ product, onClose, onAddToCart, wishlist, onToggleWish }) {
    MAIN APP COMPONENT
 ══════════════════════════════════════════════════ */
 export default function App() {
+  const [token,      setToken]      = useState(localStorage.getItem('userToken'));
   const [products,   setProducts]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState(null);
   const [cart,       setCart]       = useState([]);
   const [wishlist,   setWishlist]   = useState([]);
   const [filter,     setFilter]     = useState('All');
+  const [subFilter,  setSubFilter]  = useState('All');
+  const [hoveredCard,setHoveredCard]= useState(null);
   const [search,     setSearch]     = useState('');
   const [searchInput,setSearchInput]= useState('');
   const [cartOpen,   setCartOpen]   = useState(false);
@@ -358,6 +348,7 @@ export default function App() {
   const [notification, setNotif]   = useState(null);
   const [compareList,setCompareList]= useState([]);
   const [trending,   setTrending]   = useState([]);
+  const [experienceItem, setExperienceItem] = useState(null);
   const PER_PAGE = 12;
 
   // Scroll to top button
@@ -371,7 +362,7 @@ export default function App() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const q = new URLSearchParams({ search, category: filter === 'All' ? '' : filter });
+      const q = new URLSearchParams({ search, category: filter === 'All' ? '' : filter, subCategory: subFilter === 'All' ? '' : subFilter });
       const r = await fetch(`${API}/products?${q}`);
       if (!r.ok) throw new Error();
       const data = await r.json();
@@ -382,7 +373,7 @@ export default function App() {
       setTrending(DEMO_PRODUCTS.filter(p => p.isTrending).slice(0, 6));
     }
     setLoading(false);
-  }, [search, filter]);
+  }, [search, filter, subFilter]);
 
   useEffect(() => { load(); setPage(1); }, [load]);
 
@@ -424,10 +415,23 @@ export default function App() {
     setPage(1);
   };
 
-  const CATS = ['All','Men','Women','Casual','Formal','Ethnic','Party Wear'];
+  const MAIN_CATS = [];
+  const SUB_CATS = {};
+
+  if (!token) {
+    return <Auth onAuthSuccess={t => setToken(t)} />;
+  }
 
   return (
-    <div style={{ minHeight:'100vh', background:'#060610', color:'#f2ede4' }}>
+    <div style={{ minHeight:'100vh', background:'#060610', color:'#f2ede4', position:'relative' }}>
+
+      {/* Floating Particles */}
+      <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:0, opacity:0.18 }}>
+        {[...Array(18)].map((_, i) => (
+          <div key={i} style={{ position:'absolute', top:`${Math.random()*100}%`, left:`${Math.random()*100}%`, width: i%3===0?4:2, height: i%3===0?4:2, background:'#C9A84C', borderRadius:'50%', boxShadow:'0 0 10px #C9A84C', animation:`float ${6+i}s infinite alternate ease-in-out` }}/>
+        ))}
+      </div>
+
 
       {/* ── Toast ── */}
       {notification && (
@@ -528,7 +532,7 @@ export default function App() {
           <em className="text-gradient">You Buy It.</em>
         </h1>
         <p style={{ color:'#3a3a55', fontSize:16, fontWeight:400, maxWidth:520, margin:'0 auto 36px', lineHeight:1.7, animation:'fadeUp 0.7s ease' }}>
-          Browse our curated collection of premium garments, preview them in stunning 3D, and experience Augmented Reality try-on before checkout.
+          Browse our curated collection of premium garments and experience intelligent Augmented Reality Try-On before checkout.
         </p>
 
         <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap', marginBottom:16, animation:'fadeUp 0.8s ease' }}>
@@ -536,13 +540,13 @@ export default function App() {
             <ShoppingBag size={16}/> Shop Now
           </button>
           <button onClick={()=>setFilter('All')} className="btn-ghost" style={{ padding:'14px 32px', borderRadius:14, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
-            <Box size={16}/> Explore 3D Models
+            <Camera size={16}/> Virtual Try-On
           </button>
         </div>
 
         {/* Stats chips */}
         <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap', animation:'fadeUp 0.9s ease' }}>
-          {[['⚡','Instant 3D View'],['📱','AR Try-On'],['✦',`${products.length || 22}+ Pieces`],['🔒','Secure Checkout'],['🚚','Free Delivery']].map(([icon,label]) => (
+          {[['⚡','Instant AR Overlay'],['📱','AI Body Tracking'],['✦',`${products.length || 22}+ Pieces`],['🔒','Secure Checkout'],['🚚','Free Delivery']].map(([icon,label]) => (
             <div key={label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(201,168,76,0.15)', borderRadius:999, padding:'7px 18px', fontSize:12, color:'#555', display:'flex', alignItems:'center', gap:6, fontWeight:500 }}>
               {icon} {label}
             </div>
@@ -616,19 +620,7 @@ export default function App() {
 
         {/* Filter row */}
         <div style={{ marginBottom:20 }}>
-          {/* Categories */}
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom: showFilters ? 16 : 0 }}>
-            {CATS.map(c => (
-              <button key={c} onClick={()=>{setFilter(c);setPage(1);}} className="filter-pill"
-                style={{ padding:'8px 20px', borderRadius:999, fontSize:12, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase',
-                  background: filter===c ? 'linear-gradient(135deg,#C9A84C,#F0D080)' : 'rgba(255,255,255,0.04)',
-                  color: filter===c ? '#07070d' : '#444',
-                  border: filter===c ? 'none' : '1px solid rgba(255,255,255,0.07)',
-                }}>
-                {c}
-              </button>
-            ))}
-          </div>
+
 
           {/* Advanced filters panel */}
           {showFilters && (
@@ -669,9 +661,18 @@ export default function App() {
 
         {/* Product grid/list */}
         {loading ? (
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:420, gap:16 }}>
-            <div style={{ width:48, height:48, border:'3px solid rgba(201,168,76,0.2)', borderTop:'3px solid #C9A84C', borderRadius:'50%', animation:'spin 1s linear infinite' }}/>
-            <p style={{ color:'#2a2a3a', fontSize:11, letterSpacing:'0.25em', textTransform:'uppercase', fontWeight:700 }}>Loading collection…</p>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:20, position:'relative', zIndex:10 }}>
+            {[...Array(8)].map((_, i) => (
+              <div key={i} style={{ background:'#0e0e1c', borderRadius:22, border:'1px solid rgba(255,255,255,0.03)', height:450, overflow:'hidden', position:'relative' }}>
+                <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.02), transparent)', transform:'translateX(-100%)', animation:'shimmer 1.5s infinite' }}/>
+                <div style={{ width:'100%', height:'65%', background:'#141422' }}/>
+                <div style={{ padding:16 }}>
+                  <div style={{ width:'30%', height:10, background:'#1e1e2e', borderRadius:4, marginBottom:10 }}/>
+                  <div style={{ width:'80%', height:20, background:'#1e1e2e', borderRadius:6, marginBottom:16 }}/>
+                  <div style={{ width:'40%', height:24, background:'#1e1e2e', borderRadius:6 }}/>
+                </div>
+              </div>
+            ))}
           </div>
         ) : visible.length === 0 ? (
           <div style={{ textAlign:'center', padding:80, color:'#2a2a3a' }}>
@@ -688,8 +689,8 @@ export default function App() {
               return (
                 <div key={p._id} onClick={()=>setSelected(p)} className="product-card"
                   style={{ background:'#0e0e1a', borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', display:'flex', gap:0, boxShadow:'0 4px 16px rgba(0,0,0,0.3)', animationDelay:`${idx*0.03}s` }}>
-                  <div style={{ width:160, height:160, flexShrink:0, background:'#141422', overflow:'hidden' }}>
-                    <img src={cover} alt={p.name} className="card-img" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.src=COVERS.men_casual}/>
+                  <div style={{ width:160, height:160, flexShrink:0, background:'transparent', overflow:'hidden', padding: '12px' }}>
+                    <img src={cover} alt={p.name} className="card-img" style={{ width:'100%', height:'100%', objectFit:'contain', mixBlendMode: 'screen', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1)) contrast(1.1)' }} onError={e=>e.target.src=COVERS.men_casual}/>
                   </div>
                   <div style={{ flex:1, padding:'18px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                     <div style={{ flex:1 }}>
@@ -721,81 +722,91 @@ export default function App() {
           </div>
         ) : (
           /* ── GRID VIEW ── */
-          <div className="stagger" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:20 }}>
-            {visible.map((p, idx) => {
-              const cover    = p.thumbnailUrl || getCover(p.category);
-              const isWished = wishlist.includes(p._id);
-              const lowStock = p.stock > 0 && p.stock < 5;
-              const discount = disc(p.price, p.originalPrice);
-              return (
-                <div key={p._id} className="product-card"
-                  style={{ background:'linear-gradient(160deg,#111120 0%,#0e0e1c 100%)', borderRadius:22, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)', cursor:'pointer', boxShadow:'0 8px 32px rgba(0,0,0,0.4)', position:'relative' }}>
+          <motion.div layout className="stagger" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:24, position:'relative', zIndex:10 }}>
+            <AnimatePresence mode="popLayout">
+              {visible.map((p, idx) => {
+                const cover    = p.thumbnailUrl || `/images/dress${p.id}.png`;
+                const isWished = wishlist.includes(p._id);
+                const lowStock = p.stock > 0 && p.stock < 5;
+                const discount = disc(p.price, p.originalPrice);
+                return (
+                  <motion.div layout initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} exit={{opacity:0, scale:0.95}} transition={{duration:0.25, delay:idx*0.03}} key={p._id} className="product-card group"
+                    style={{ background:'transparent', borderRadius:22, overflow:'hidden', border:'none', cursor:'pointer', boxShadow: hoveredCard === p._id ? '0 0 20px rgba(212, 175, 55, 0.6)' : 'none', position:'relative', transition:'all 0.3s ease', transform: hoveredCard === p._id ? 'scale(1.05)' : 'scale(1)', outline:'none' }}>
 
-                  {/* Card image */}
-                  <div onClick={()=>setSelected(p)} style={{ position:'relative', aspectRatio:'3/4', background:'#141422', overflow:'hidden' }}>
-                    <img src={cover} alt={p.name} className="card-img" loading="lazy"
-                      style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.src=COVERS.men_casual}/>
-                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,rgba(6,6,16,0.88) 0%,transparent 55%)' }}/>
+                    {/* Card image/3D */}
+                    <div onClick={()=>setSelected(p)} onMouseEnter={()=>setHoveredCard(p._id)} onMouseLeave={()=>setHoveredCard(null)} style={{ position:'relative', aspectRatio:'3/4', background:'transparent', overflow:'hidden', border:'none', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <img src={cover} alt={p.name} className="card-img" loading="lazy"
+                        style={{ width:'100%', height:'100%', objectFit:'contain', transition:'all 0.3s ease', opacity: 1, background:'transparent', border:'none', outline:'none', mixBlendMode: 'screen', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1)) contrast(1.1)' }} onError={e=>e.target.src=COVERS.men_casual}/>
+                      
+                      {/* Strictly NO black overlay filters as requested by Master Prompt */}
+                      <div style={{ position:'absolute', inset:0, zIndex:20, pointerEvents:'none', background:'linear-gradient(to top,rgba(18,18,18,0.95) 0%,rgba(18,18,18,0) 40%)' }}/>
 
-                    {/* Wish btn */}
-                    <button onClick={e=>{e.stopPropagation();toggleWish(p._id);}}
-                      style={{ position:'absolute', top:12, right:12, width:34, height:34, borderRadius:'50%', background:'rgba(6,6,16,0.75)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, backdropFilter:'blur(8px)', transition:'transform 0.2s', color: isWished?'#f87171':'#666' }}
-                      onMouseOver={e=>e.currentTarget.style.transform='scale(1.2)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
-                      <Heart size={13} fill={isWished?'#f87171':'none'} color={isWished?'#f87171':'currentColor'}/>
-                    </button>
-
-                    {/* Top-left badges */}
-                    <div style={{ position:'absolute', top:12, left:12, display:'flex', flexDirection:'column', gap:4, zIndex:2 }}>
-                      {p.badge && <Badge text={p.badge}/>}
-                      {lowStock && (
-                        <span style={{ background:'rgba(239,68,68,0.9)', color:'#fff', fontSize:8, fontWeight:900, padding:'3px 8px', borderRadius:5, letterSpacing:'0.08em' }}>⚠ {p.stock} LEFT</span>
-                      )}
-                      {discount > 0 && !p.badge && (
-                        <span style={{ background:'rgba(34,197,94,0.85)', color:'#07070d', fontSize:8, fontWeight:900, padding:'3px 8px', borderRadius:5, letterSpacing:'0.08em' }}>{discount}% OFF</span>
-                      )}
-                    </div>
-
-                    {/* Out of stock */}
-                    {p.stock === 0 && (
-                      <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3 }}>
-                        <span style={{ background:'#ef4444', color:'#fff', padding:'8px 22px', borderRadius:10, fontWeight:800, fontSize:12, letterSpacing:'0.08em' }}>SOLD OUT</span>
-                      </div>
-                    )}
-
-                    {/* 3D badge */}
-                    <div style={{ position:'absolute', bottom:12, left:'50%', transform:'translateX(-50%)', background:'rgba(201,168,76,0.9)', borderRadius:8, padding:'6px 16px', fontSize:10, fontWeight:800, color:'#07070d', display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap', letterSpacing:'0.08em', textTransform:'uppercase', zIndex:2 }}>
-                      <Box size={10}/> View in 3D
-                    </div>
-                  </div>
-
-                  {/* Card info */}
-                  <div style={{ padding:'14px 16px 16px' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-                      <p style={{ fontSize:9, fontWeight:700, color:'#C9A84C', letterSpacing:'0.2em', textTransform:'uppercase' }}>{p.category?.split(',')[0]}</p>
-                      {p.isTrending && <span style={{ fontSize:9, color:'#fb923c', fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><Flame size={9}/>Trending</span>}
-                    </div>
-                    <h3 onClick={()=>setSelected(p)} style={{ fontFamily:"Playfair Display,serif", fontSize:18, fontWeight:700, marginBottom:6, lineHeight:1.2, color:'#f2ede4', cursor:'pointer' }}>{p.name}</h3>
-
-                    <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:8 }}>
-                      <Stars rating={p.rating} size={11}/>
-                      <span style={{ fontSize:11, color:'#2e2e4a' }}>({p.rating || '—'})</span>
-                    </div>
-
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <div>
-                        <span style={{ fontSize:19, fontWeight:800, color:'#f2ede4' }}>{fmt(p.price)}</span>
-                        {p.originalPrice > p.price && <span style={{ fontSize:12, color:'#2a2a3a', textDecoration:'line-through', marginLeft:6 }}>{fmt(p.originalPrice)}</span>}
-                      </div>
-                      <button onClick={e=>{e.stopPropagation();addToCart(p);}} disabled={p.stock===0} className="btn-gold"
-                        style={{ width:36, height:36, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity:p.stock===0?0.4:1, cursor:p.stock===0?'not-allowed':'pointer' }}>
-                        <ShoppingBag size={15}/>
+                      {/* Wish btn */}
+                      <button onClick={e=>{e.stopPropagation();toggleWish(p._id);}}
+                        style={{ position:'absolute', top:12, right:12, width:34, height:34, borderRadius:'50%', background:'rgba(6,6,16,0.75)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:21, backdropFilter:'blur(8px)', transition:'transform 0.2s', color: isWished?'#f87171':'#666', pointerEvents:'auto' }}
+                        onMouseOver={e=>e.currentTarget.style.transform='scale(1.2)'} onMouseOut={e=>e.currentTarget.style.transform='scale(1)'}>
+                        <Heart size={13} fill={isWished?'#f87171':'none'} color={isWished?'#f87171':'currentColor'}/>
                       </button>
+
+                      {/* Top-left badges */}
+                      <div style={{ position:'absolute', top:12, left:12, display:'flex', flexDirection:'column', gap:4, zIndex:21 }}>
+                        {p.badge && <Badge text={p.badge}/>}
+                        {lowStock && (
+                          <span style={{ background:'rgba(239,68,68,0.9)', color:'#fff', fontSize:8, fontWeight:900, padding:'3px 8px', borderRadius:5, letterSpacing:'0.08em' }}>⚠ {p.stock} LEFT</span>
+                        )}
+                        {discount > 0 && !p.badge && (
+                          <span style={{ background:'rgba(34,197,94,0.85)', color:'#07070d', fontSize:8, fontWeight:900, padding:'3px 8px', borderRadius:5, letterSpacing:'0.08em' }}>{discount}% OFF</span>
+                        )}
+                      </div>
+
+                      {/* Out of stock */}
+                      {p.stock === 0 && (
+                        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:22, pointerEvents:'none' }}>
+                          <span style={{ background:'#ef4444', color:'#fff', padding:'8px 22px', borderRadius:10, fontWeight:800, fontSize:12, letterSpacing:'0.08em' }}>SOLD OUT</span>
+                        </div>
+                      )}
+
+                      {/* 3D badge removed */}
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+
+                    {/* Card info */}
+                    <div style={{ padding:'14px 16px 16px', position:'relative', zIndex:10 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                        <p style={{ fontSize:9, fontWeight:700, color:'#C9A84C', letterSpacing:'0.2em', textTransform:'uppercase' }}>{p.subCategory || p.category?.split(',')[0]}</p>
+                        {p.isTrending && <span style={{ fontSize:9, color:'#fb923c', fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><Flame size={9}/>Trending</span>}
+                      </div>
+                      <h3 onClick={()=>setSelected(p)} style={{ fontFamily:"Playfair Display,serif", fontSize:18, fontWeight:700, marginBottom:6, lineHeight:1.2, color:'#f2ede4', cursor:'pointer' }}>{p.name}</h3>
+
+                      <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:8 }}>
+                        <Stars rating={p.rating} size={11}/>
+                        <span style={{ fontSize:11, color:'#2e2e4a' }}>({p.rating || '—'})</span>
+                      </div>
+
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                        <div>
+                          <span style={{ fontSize:19, fontWeight:800, color:'#f2ede4' }}>{fmt(p.price)}</span>
+                          {p.originalPrice > p.price && <span style={{ fontSize:12, color:'#2a2a3a', textDecoration:'line-through', marginLeft:6 }}>{fmt(p.originalPrice)}</span>}
+                        </div>
+                        <div style={{ display:'flex', gap:6, width:'100%', marginLeft:10 }}>
+                          {p.isComingSoon ? (
+                            <button className="btn-ghost" disabled
+                              style={{ flex:1, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', padding:'8px 4px', fontSize:12, fontWeight:700, pointerEvents:'none', opacity:0.5, border:'1px solid rgba(255,255,255,0.08)' }}>
+                              Coming Soon
+                            </button>
+                          ) : (
+                            <button onClick={e=>{e.stopPropagation();setExperienceItem(p);}} className="btn-gold"
+                              style={{ flex:1, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'auto', cursor:'pointer', padding:'8px 4px', fontSize:12, fontWeight:700, background:'linear-gradient(135deg, #D4AF37, #FADA5E)', color:'#000080' }}>
+                              <Sparkles size={14} style={{ marginRight:4 }}/> Virtual Try-On
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
         )}
 
         {/* Pagination */}
@@ -823,7 +834,7 @@ export default function App() {
       <section style={{ borderTop:'1px solid rgba(255,255,255,0.05)', borderBottom:'1px solid rgba(255,255,255,0.05)', padding:'40px 24px' }}>
         <div style={{ maxWidth:1340, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:24 }}>
           {[
-            { icon:'🎲', title:'3D & AR Try-On',       desc:'See every garment in stunning 3D, try it in your space via AR.' },
+            { icon:'📸', title:'Virtual AR Try-On',       desc:'See every garment mapped to your shoulders in real-time via AR.' },
             { icon:'🚚', title:'Free Delivery',         desc:'Complimentary shipping on all orders above ₹999.' },
             { icon:'🔄', title:'30-Day Returns',        desc:'Easy, hassle-free returns within 30 days of purchase.' },
             { icon:'🔒', title:'Secure Payments',       desc:'100% safe checkout with industry-grade encryption.' },
@@ -908,6 +919,7 @@ export default function App() {
           onAddToCart={p=>{addToCart(p);}}
           wishlist={wishlist}
           onToggleWish={toggleWish}
+          onStartLive={(p)=>setLiveSession(p)}
         />
       )}
 
@@ -919,6 +931,11 @@ export default function App() {
             <ReviewForm products={products} onClose={()=>setReviewOpen(false)}/>
           </div>
         </div>
+      )}
+
+      {/* ══ EXPERIENCE MANAGER MODAL ══ */}
+      {experienceItem && (
+        <ExperienceManager product={experienceItem} onClose={() => setExperienceItem(null)} />
       )}
 
       {/* ══ FOOTER ══ */}
@@ -933,7 +950,7 @@ export default function App() {
                 </div>
                 <span style={{ fontFamily:"Playfair Display,serif", fontSize:20, fontWeight:700, color:'#f2ede4' }}>Webion AR</span>
               </div>
-              <p style={{ color:'#2a2a3a', fontSize:13, lineHeight:1.7 }}>Premium AR Fashion Store — Experience fashion like never before with our immersive 3D & AR technology.</p>
+              <p style={{ color:'#2a2a3a', fontSize:13, lineHeight:1.7 }}>Premium AR Fashion Store — Experience fashion like never before with our immersive AR Virtual Try-On technology.</p>
             </div>
 
             {/* Links */}

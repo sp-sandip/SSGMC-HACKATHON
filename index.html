@@ -10,8 +10,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
   </head>
   <body>
+    <script>
+      window.addEventListener('error', function(e) {
+        document.body.innerHTML += '<div style="color:red; background:white; position:relative; z-index:9999; padding:20px; font-family:monospace; white-space:pre-wrap;">ERR: ' + e.message + '<br/>' + (e.error && e.error.stack ? e.error.stack : '') + '</div>';
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        document.body.innerHTML += '<div style="color:blue; background:white; position:relative; z-index:9999; padding:20px; font-family:monospace; white-space:pre-wrap;">PROMISE ERR: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason) + '</div>';
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

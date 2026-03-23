@@ -4,9 +4,39 @@ const cors     = require('cors');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const path     = require('path');
+const http     = require('http');
+const { Server } = require('socket.io');
 require('dotenv').config();
 
 const app        = express();
+const server     = http.createServer(app);
+const io         = new Server(server, { cors: { origin: '*' } });
+
+/* ═══════════════════ SOCKET.IO ═══════════════════════════════════════════ */
+io.on('connection', (socket) => {
+  console.log('🔗 Socket connected:', socket.id);
+  
+  socket.on('initiate_negotiation', (data) => {
+    console.log('📞 Legacy call request:', data);
+    io.emit('incoming_call', data);
+  });
+  
+  // Advanced Handshake (10-Product Store)
+  socket.on('call-request', (data) => {
+    console.log('📞 Incoming AR call request:', data);
+    io.emit('call-request', data);
+  });
+  socket.on('call-accepted', (data) => {
+    console.log('✅ AR call accepted:', data);
+    io.emit('call-accepted', data);
+  });
+  socket.on('call-ended', (data) => {
+    console.log('🛑 AR call ended:', data);
+    io.emit('call-ended', data);
+  });
+
+  socket.on('disconnect', () => console.log('❌ Socket disconnected:', socket.id));
+});
 const PORT       = process.env.PORT       || 5000;
 const MONGO_URI  = process.env.MONGO_URI  || 'mongodb://localhost:27017/webion_ar';
 const JWT_SECRET = process.env.JWT_SECRET || 'webion_secret_2025';
@@ -20,17 +50,19 @@ app.use('/images', express.static(path.join(__dirname, 'public/images')));
 const ProductSchema = new mongoose.Schema({
   name:          { type: String,  required: true },
   category:      { type: String,  required: true },
+  subCategory:   { type: String,  default: '' },
   price:         { type: Number,  required: true },
   originalPrice: { type: Number },
   thumbnailUrl:  { type: String,  default: '' },
   modelUrl:      { type: String,  default: '' },
   description:   { type: String,  default: '' },
-  stock:         { type: Number,  default: 10 },
   badge:         { type: String,  default: '' },
   rating:        { type: Number,  default: 4.5 },
   reviewCount:   { type: Number,  default: 0 },
   sales:         { type: Number,  default: 0 },
   isTrending:    { type: Boolean, default: false },
+  isComingSoon:  { type: Boolean, default: false },
+  id:            { type: String,  required: true },
 }, { timestamps: true });
 const Product = mongoose.model('Product', ProductSchema);
 
@@ -44,6 +76,13 @@ const ReviewSchema = new mongoose.Schema({
   read:        { type: Boolean, default: false },
 }, { timestamps: true });
 const Review = mongoose.model('Review', ReviewSchema);
+
+const UserSchema = new mongoose.Schema({
+  mobile:   { type: String, required: true, unique: true },
+  email:    { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+}, { timestamps: true });
+const User = mongoose.model('User', UserSchema);
 
 const AdminSchema = new mongoose.Schema({
   adminId:  { type: String, required: true, unique: true },
@@ -63,6 +102,26 @@ const authGuard = (req, res, next) => {
 
 /* ═══════════════════ AUTH ROUTES ═════════════════════════════════════════ */
 
+app.post('/api/auth/signup', async (req, res) => {
+  const { mobile, email, password } = req.body;
+  try {
+    if (await User.findOne({ $or: [{email}, {mobile}] })) return res.status(400).json({ message: 'User already exists' });
+    const user = await User.create({ mobile, email, password: await bcrypt.hash(password, 10) });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { mobile, email } });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: 'Invalid credentials' });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { mobile: user.mobile, email: user.email } });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.post('/api/admin/login', async (req, res) => {
   const { adminId, password } = req.body;
   try {
@@ -79,11 +138,11 @@ app.post('/api/admin/login', async (req, res) => {
 
 app.get('/api/products', async (req, res) => {
   try {
-    const { search, category } = req.query;
+    const { search, category, subCategory } = req.query;
     const q = {};
     if (search)   q.name     = { $regex: search,   $options: 'i' };
-    if (category && category !== 'All')
-                  q.category = { $regex: category, $options: 'i' };
+    if (category && category !== 'All') q.category = category;
+    if (subCategory && subCategory !== 'All') q.subCategory = subCategory;
     res.json(await Product.find(q).sort({ createdAt: -1 }));
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -151,28 +210,12 @@ app.get('/api/stats', authGuard, async (req, res) => {
 /* ═══════════════════ SEED & CONNECT ══════════════════════════════════════ */
 
 const PRODUCTS = [
-  { name:'Red T-Shirt',           category:'Men, Casual',       price:999,   originalPrice:1499,  modelUrl:'/models/red_t-shirt.glb',                                 stock:15, badge:'HOT',    rating:4.5, sales:91,  isTrending:true },
-  { name:'Summer Formal Dress',   category:'Women, Formal',     price:3499,  originalPrice:5999,  modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:7,  badge:'NEW',    rating:4.8, sales:44,  isTrending:true },
-  { name:'Navy Blue Casual Suit', category:'Men, Casual',       price:5999,  originalPrice:8999,  modelUrl:'/models/navy_blue_casual_suit_with_white_jeans.glb',      stock:5,  badge:'SALE',   rating:4.7, sales:67,  isTrending:false },
-  { name:'Rock Jacket',           category:'Men, Casual',       price:2799,  originalPrice:3999,  modelUrl:'/models/rock_jacket_mid-poly.glb',                        stock:9,  badge:'',       rating:4.6, sales:55,  isTrending:true },
-  { name:'Casual Shirt',          category:'Men, Casual',       price:1299,  originalPrice:1999,  modelUrl:'/models/casual_shirt.glb',                                stock:22, badge:'',       rating:4.4, sales:112, isTrending:false },
-  { name:'Traditional Saree',     category:'Women, Ethnic',     price:8500,  originalPrice:12000, modelUrl:'/models/traditional_saree.glb',                          stock:4,  badge:'PREMIUM',rating:4.9, sales:31,  isTrending:true },
-  { name:'Premium Navy Suit',     category:'Men, Formal',       price:5999,  originalPrice:8999,  modelUrl:'/models/navy_blue_casual_suit_with_white_jeans.glb',      stock:8,  badge:'SALE',   rating:4.7, sales:42,  isTrending:true },
-  { name:'Emerald Evening Gown',  category:'Women, Party Wear', price:7500,  originalPrice:11000, modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:3,  badge:'',       rating:4.8, sales:28,  isTrending:false },
-  { name:'Classic Biker Jacket',  category:'Men, Casual',       price:3500,  originalPrice:4999,  modelUrl:'/models/rock_jacket_mid-poly.glb',                        stock:7,  badge:'',       rating:4.6, sales:55,  isTrending:false },
-  { name:'Gold Cocktail Dress',   category:'Women, Party Wear', price:4999,  originalPrice:7500,  modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:1,  badge:'HOT',    rating:4.7, sales:44,  isTrending:true },
-  { name:'Luxury Party Tuxedo',   category:'Men, Party Wear',   price:9500,  originalPrice:14000, modelUrl:'/models/navy_blue_casual_suit_with_white_jeans.glb',      stock:3,  badge:'',       rating:4.8, sales:22,  isTrending:true },
-  { name:'Festival Lehenga',      category:'Women, Ethnic',     price:11000, originalPrice:16000, modelUrl:'/models/traditional_saree.glb',                          stock:6,  badge:'',       rating:4.7, sales:35,  isTrending:false },
-  { name:'Linen Summer Shirt',    category:'Men, Casual',       price:1599,  originalPrice:2399,  modelUrl:'/models/casual_shirt.glb',                                stock:20, badge:'',       rating:4.3, sales:88,  isTrending:false },
-  { name:'Boho Maxi Dress',       category:'Women, Casual',     price:1999,  originalPrice:2999,  modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:13, badge:'',       rating:4.5, sales:61,  isTrending:false },
-  { name:'Embroidered Sherwani',  category:'Men, Ethnic',       price:15000, originalPrice:22000, modelUrl:'/models/navy_blue_casual_suit_with_white_jeans.glb',      stock:2,  badge:'PREMIUM',rating:4.9, sales:14,  isTrending:true },
-  { name:'Bridal Silk Saree',     category:'Women, Ethnic',     price:8500,  originalPrice:12000, modelUrl:'/models/traditional_saree.glb',                          stock:4,  badge:'',       rating:4.9, sales:31,  isTrending:false },
-  { name:'Gold Kurti Set',        category:'Women, Ethnic',     price:3500,  originalPrice:5200,  modelUrl:'/models/traditional_saree.glb',                          stock:8,  badge:'',       rating:4.6, sales:49,  isTrending:false },
-  { name:'Slim Fit Trousers',     category:'Men, Formal',       price:1800,  originalPrice:2700,  modelUrl:'/models/navy_blue_casual_suit_with_white_jeans.glb',      stock:16, badge:'',       rating:4.4, sales:77,  isTrending:false },
-  { name:'Sequin Dance Top',      category:'Women, Party Wear', price:2500,  originalPrice:3750,  modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:0,  badge:'',       rating:4.5, sales:43,  isTrending:false },
-  { name:'Formal Cotton Shirt',   category:'Men, Formal',       price:1499,  originalPrice:2200,  modelUrl:'/models/casual_shirt.glb',                                stock:22, badge:'',       rating:4.3, sales:95,  isTrending:false },
-  { name:'Vintage Graphic Tee',   category:'Men, Casual',       price:999,   originalPrice:1499,  modelUrl:'/models/red_t-shirt.glb',                                 stock:30, badge:'',       rating:4.2, sales:112, isTrending:false },
-  { name:'Velvet Gala Gown',      category:'Women, Party Wear', price:13000, originalPrice:19000, modelUrl:'/models/hight-poly_summer_formal_dress.glb',              stock:4,  badge:'',       rating:4.8, sales:17,  isTrending:false },
+  { id: "1", name: "Royal Gold Sherwani", category: "Men's Fashion", subCategory: "Traditional", price: 12499, originalPrice: 15499, thumbnailUrl: "/images/dress1.png", stock: 15, badge: "LUXURY", rating: 4.8, reviewCount: 24, sales: 120, isTrending: true, isComingSoon: false },
+  { id: "2", name: "Midnight Navy Suit", category: "Men's Fashion", subCategory: "Formal", price: 8999, originalPrice: 11999, thumbnailUrl: "/images/dress2.png", stock: 20, badge: "NEW", rating: 4.7, reviewCount: 18, sales: 85, isTrending: true, isComingSoon: false },
+  { id: "3", name: "Charcoal Black Tuxedo", category: "Men's Fashion", subCategory: "Formal", price: 10500, originalPrice: 13500, thumbnailUrl: "/images/dress3.png", stock: 10, badge: "", rating: 4.9, reviewCount: 32, sales: 50, isTrending: true, isComingSoon: false },
+  { id: "4", name: "Classic White Shirt", category: "Men's Fashion", subCategory: "Casual", price: 2499, originalPrice: 3499, thumbnailUrl: "/images/dress4.png", stock: 30, badge: "", rating: 4.5, reviewCount: 45, sales: 200, isTrending: false, isComingSoon: false },
+  { id: "5", name: "Olive Utility Jacket", category: "Men's Fashion", subCategory: "Outerwear", price: 4200, originalPrice: 5500, thumbnailUrl: "/images/dress5.png", stock: 25, badge: "", rating: 4.6, reviewCount: 20, sales: 150, isTrending: false, isComingSoon: false },
+  { id: "6", name: "Navy Crewneck Tee", category: "Men's Fashion", subCategory: "Casual", price: 1800, originalPrice: 2500, thumbnailUrl: "/images/dress6.png", stock: 40, badge: "", rating: 4.4, reviewCount: 50, sales: 300, isTrending: false, isComingSoon: false }
 ];
 
 const REVIEWS_SEED = [
@@ -192,11 +235,10 @@ mongoose.connect(MONGO_URI).then(async () => {
     console.log('✅ Admin seeded → ID: admin001 | Password: Admin@123');
   }
 
-  // Seed products
-  if (!(await Product.countDocuments())) {
-    await Product.insertMany(PRODUCTS);
-    console.log(`✅ ${PRODUCTS.length} products seeded`);
-  }
+  // Seed products (Force strict 10-Product Universal Collection on boot)
+  await Product.deleteMany({});
+  await Product.insertMany(PRODUCTS);
+  console.log(`✅ ${PRODUCTS.length} Universal Collection products seeded`);
 
   // Seed reviews
   if (!(await Review.countDocuments())) {
@@ -209,7 +251,7 @@ mongoose.connect(MONGO_URI).then(async () => {
     console.log('✅ Reviews seeded');
   }
 
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`\n🚀 Webion AR Server running at http://localhost:${PORT}`);
     console.log(`   AR Shop API  → http://localhost:${PORT}/api/products`);
     console.log(`   Admin Login  → POST http://localhost:${PORT}/api/admin/login`);

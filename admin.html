@@ -9,6 +9,8 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <script>
     tailwind.config = {
@@ -496,6 +498,104 @@ function Confirm({ msg, onYes, onNo }) {
   );
 }
 
+// ── Admin Live Session ────────────────────────────────────────────────────
+function AdminLiveSession({ session, onEnd }) {
+  const [localAudioTrack, setLocalAudioTrack] = useState(null);
+  const [localVideoTrack, setLocalVideoTrack] = useState(null);
+  const [remoteUser, setRemoteUser] = useState(null);
+  const [muted, setMuted] = useState(false);
+  
+  const localRef = useRef();
+  const remoteRef = useRef();
+  const rtcRef = useRef({ client: null });
+
+  useEffect(() => {
+    let unmounted = false;
+    const APP_ID = '6d205627ba6f446fb4ae1c8f44d7a95a';
+    const TOKEN = '007eJxTYNgwV1QidEKITkDOcbtt3p5TvrHvi9V7cV7PwCxbTXhm2nEFBrMUIwNTMyPzpESzNBMTs7Qkk8RUw2QLIDvFPNHSNHFj2IHMhkBGhrDA50yMDBAI4nMxlKQWl8QX5efn6jEwAABnmiAq';
+    const CHANNEL = 'test_room';
+    const initAgora = async () => {
+      if (!window.AgoraRTC) return;
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      rtcRef.current.client = client;
+
+      client.on('user-published', async (user, mediaType) => {
+        await client.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+          setRemoteUser(user);
+          setTimeout(() => user.videoTrack?.play(remoteRef.current), 100);
+        }
+        if (mediaType === 'audio') user.audioTrack?.play();
+      });
+
+      client.on('user-unpublished', (user, type) => {
+        if (type === 'video') setRemoteUser(null);
+      });
+
+      try {
+        const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        if (!unmounted) {
+          setLocalAudioTrack(aTrack);
+          setLocalVideoTrack(vTrack);
+          vTrack.play(localRef.current);
+          await client.join(APP_ID, CHANNEL, TOKEN, null);
+          await client.publish([aTrack, vTrack]);
+        }
+      } catch (e) {
+        console.error('Agora joined failed:', e);
+      }
+    };
+    initAgora();
+
+    return () => {
+      unmounted = true;
+      if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
+      if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
+      rtcRef.current.client?.leave();
+    };
+  }, [session]);
+
+  const toggleMute = () => {
+    if (localAudioTrack) {
+      localAudioTrack.setMuted(!muted);
+      setMuted(!muted);
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col animate-fade-up">
+      <div className="flex items-center justify-between mb-4 glass rounded-2xl gold-border p-4">
+        <div>
+          <h2 className="font-syne font-bold text-white text-lg flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"/> Live Assistance</h2>
+          <p className="text-gray-500 text-sm font-dm">Session: {session?.channelName}</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={toggleMute} className={`px-4 py-2 rounded-xl text-sm font-dm transition-all ${muted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+            {muted ? 'Unmute' : 'Mute'}
+          </button>
+          <button onClick={onEnd} className="px-5 py-2 rounded-xl text-sm font-syne font-bold bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg shadow-red-500/20">End Call</button>
+        </div>
+      </div>
+      <div className="flex-1 grid grid-cols-2 gap-4 h-full min-h-[400px]">
+        {/* Remote (Buyer) */}
+        <div className="glass rounded-2xl gold-border overflow-hidden relative">
+          <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-white border border-white/10 tracking-wider">BUYER SIDE & AR TRY-ON</div>
+          <div ref={remoteRef} className="w-full h-full bg-slate-900/50 flex items-center justify-center">
+            {!remoteUser && <p className="text-gray-500 font-dm">Waiting for buyer...</p>}
+          </div>
+        </div>
+        {/* Local (Seller) */}
+        <div className="glass rounded-2xl gold-border overflow-hidden relative">
+          <div className="absolute top-4 left-4 z-10 bg-gold-500/80 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-slate-900 border border-gold-400 tracking-wider">YOU (SELLER)</div>
+          <div ref={localRef} className="w-full h-full bg-slate-900/50 flex items-center justify-center overflow-hidden">
+             {!localVideoTrack && <p className="text-gray-500 font-dm">Initializing Camera...</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────
 function Dashboard({ admin, onLogout }) {
   const [products, setProducts]   = useState([]);
@@ -509,6 +609,29 @@ function Dashboard({ admin, onLogout }) {
   const [toasts,   setToasts]     = useState([]);
   const [sideOpen, setSideOpen]   = useState(true);
   const [editInline, setEditInline] = useState(null); // { id, field, val }
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
+  const socketRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof io !== 'undefined') {
+      const socketUrl = window.location.origin.includes('517') 
+        ? window.location.origin.replace(/517[0-9]/, '5000') 
+        : 'http://localhost:5000';
+      socketRef.current = io(socketUrl, { transports: ['websocket', 'polling'] });
+      
+      socketRef.current.on('client-call', (data) => {
+        setIncomingCall(data);
+      });
+      
+      socketRef.current.on('call-ended', () => {
+        setIncomingCall(null);
+        setActiveSession(null);
+      });
+
+      return () => socketRef.current.disconnect();
+    }
+  }, []);
 
   const token = localStorage.getItem('adminToken') || 'demo';
   const headers = { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` };
@@ -524,6 +647,7 @@ function Dashboard({ admin, onLogout }) {
     try {
       const q = new URLSearchParams({ search, category: catFilter==='All'?'':catFilter });
       const r = await fetch(`${API}/products?${q}`);
+      if (!r.ok) throw new Error('Failed to fetch');
       const d = await r.json();
       setProducts(Array.isArray(d) ? d : []);
     } catch {
@@ -535,6 +659,7 @@ function Dashboard({ admin, onLogout }) {
   const loadReviews = useCallback(async () => {
     try {
       const r = await fetch(`${API}/reviews`, { headers });
+      if (!r.ok) throw new Error('Failed to fetch');
       setReviews(await r.json());
     } catch {
       setReviews(getDemoReviews());
@@ -544,6 +669,7 @@ function Dashboard({ admin, onLogout }) {
   const loadStats = useCallback(async () => {
     try {
       const r = await fetch(`${API}/stats`, { headers });
+      if (!r.ok) throw new Error('Failed to fetch');
       setStats(await r.json());
     } catch {
       setStats({ totalProducts:22, totalUsers:5, todayVisitors:3, unreadReviews:3, lowStock:4, topProducts:[] });
@@ -637,6 +763,7 @@ function Dashboard({ admin, onLogout }) {
     {id:'users',     icon:'👥', label:'Users'},
     {id:'submit',    icon:'📝', label:'Submit Review'},
     {id:'settings',  icon:'⚙️',  label:'Settings'},
+    ...(activeSession ? [{id:'live', icon:'📞', label:'Live Session'}] : []),
   ];
 
   return (
@@ -644,6 +771,28 @@ function Dashboard({ admin, onLogout }) {
       <Toast toasts={toasts}/>
       {confirm && <Confirm msg={confirm.msg} onYes={()=>deleteProduct(confirm.id)} onNo={()=>setConfirm(null)}/>}
       {modal && <ProductModal product={modal==='add'?null:modal} onSave={saveProduct} onClose={()=>setModal(null)}/>}
+      {incomingCall && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center modal-overlay" style={{background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)'}}>
+          <div className="glass rounded-3xl gold-border p-8 w-96 shadow-2xl text-center animate-fade-up">
+            <div className="w-20 h-20 rounded-full bg-gold-500/20 text-gold-500 mx-auto flex items-center justify-center text-3xl mb-4 animate-pulse-gold">📞</div>
+            <h2 className="font-syne font-bold text-white text-xl mb-2">Incoming AR Consultation</h2>
+            <p className="text-gray-400 text-sm font-dm mb-6">User is requesting AR Try-On assistance for <strong>{incomingCall.productName}</strong>. You will receive their AR overlay stream.</p>
+            <div className="flex gap-4">
+              <button onClick={()=>{
+                socketRef.current?.emit('call-ended', { channelName: incomingCall.channelName });
+                setIncomingCall(null);
+              }} className="flex-1 py-3 rounded-xl text-sm font-dm text-gray-400 border border-white/10 hover:bg-white/5 transition-all">Decline</button>
+              
+              <button onClick={()=>{
+                socketRef.current?.emit('call-accepted', { channelName: incomingCall.channelName });
+                setActiveSession(incomingCall); 
+                setPage('live'); 
+                setIncomingCall(null);
+              }} className="flex-1 py-3 rounded-xl text-sm font-syne font-bold bg-gradient-to-r from-gold-500 to-gold-400 text-slate-900 hover:shadow-lg hover:shadow-gold-500/20 transition-all">Accept</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── SIDEBAR ──────────────────────────────────────────────────── */}
       <aside className={`${sideOpen?'w-60':'w-16'} flex-shrink-0 h-full glass border-r border-white/5 flex flex-col transition-all duration-300`}>
@@ -1058,6 +1207,13 @@ function Dashboard({ admin, onLogout }) {
                 </div>
                 <ReviewForm products={products} onSubmit={submitReview}/>
               </div>
+            </div>
+          )}
+
+          {/* ──────── LIVE SESSION ──────── */}
+          {page === 'live' && activeSession && (
+            <div className="h-full">
+              <AdminLiveSession session={activeSession} onEnd={() => { setActiveSession(null); setPage('dashboard'); }} />
             </div>
           )}
 
